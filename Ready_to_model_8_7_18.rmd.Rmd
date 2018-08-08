@@ -1,0 +1,916 @@
+---
+title: "Ready to Model"
+author: "Team 15"
+date: "July 26, 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(caret)
+library(dplyr)
+library(lattice)
+library(ggplot2)
+library(ClustOfVar)
+library(Hmisc)
+library(dendextend)
+library(colorspace)
+library(corrplot)
+library(factoextra)
+library(MASS)
+library(earth)
+
+library(mda)
+
+#library(DMwR)
+```
+
+
+```{r}
+dataset <- read.csv("C:/Users/Oscar Ferreiro/Desktop/Summer_Project/new_data.csv")
+```
+
+
+
+```{r}
+dim(dataset)
+```
+
+
+IN the small subset we tested for collinearity, it is clear we have multicollinearity problems and PCA is needed.
+
+# Need for PCA : form collinearity matrix we need to solve collinearity problem PCA is a good way.
+
+
+
+#Create Dummy variables for Variables 3,6,7,8 (SCH_DEG,	PREDDEG,	HIGHDEG,	CONTROL)
+
+library(dplyr)
+
+
+dataset$dum1ICLEVEL<-as.numeric(dataset$ICLEVEL == 1) 
+dataset$dum2ICLEVEL<- as.numeric(dataset$ICLEVEL == 2) 
+dataset$dum3ICLEVEL<- as.numeric(dataset$ICLEVEL == 3) 
+
+dataset$dum1SCH_DEG <- as.numeric(dataset$SCH_DEG == 1)
+dataset$dum2SCH_DEG <- as.numeric(dataset$SCH_DEG == 2)
+dataset$dum3SCH_DEG <- as.numeric(dataset$SCH_DEG == 3)
+
+dataset$dum0PREDDEG <- as.numeric(dataset$PREDDEG == 0)
+dataset$dum1PREDDEG <- as.numeric(dataset$PREDDEG == 1)
+dataset$dum2PREDDEG <- as.numeric(dataset$PREDDEG == 2)
+dataset$dum3PREDDEG <- as.numeric(dataset$PREDDEG == 3)
+dataset$dum4PREDDEG <- as.numeric(dataset$PREDDEG == 4)
+
+dataset$dum0HIGHDEG <- as.numeric(dataset$HIGHDEG == 0)
+dataset$dum1HIGHDEG <- as.numeric(dataset$HIGHDEG == 1)
+dataset$dum2HIGHDEG <- as.numeric(dataset$HIGHDEG == 2)
+dataset$dum3HIGHDEG <- as.numeric(dataset$HIGHDEG == 3)
+dataset$dum4HIGHDEG <- as.numeric(dataset$HIGHDEG == 4)
+
+dataset$dum1CONTROL <- as.numeric(dataset$CONTROL == 1)
+dataset$dum2CONTROL <- as.numeric(dataset$CONTROL == 2)
+dataset$dum3CONTROL <- as.numeric(dataset$CONTROL == 3)
+
+dataset$ICLEVEL=NULL
+dataset$SCH_DEG=NULL
+dataset$PREDDEG=NULL
+dataset$HIGHDEG=NULL
+dataset$CONTROL=NULL
+
+
+
+
+
+```{r}
+
+#dummy code available 
+dataset$ICLEVEL<- as.factor(dataset$ICLEVE)
+dataset$SCH_DEG<- as.factor(dataset$SCH_DEG)
+dataset$PREDDEG<- as.factor(dataset$PREDDEG)
+dataset$HIGHDEG<- as.factor(dataset$HIGHDEG)
+dataset$CONTROL<- as.factor(dataset$CONTROL)
+
+
+
+
+dataset$OPENADMP<- as.factor(dataset$OPENADMP) #good
+dataset$MAIN<- as.factor(dataset$MAIN)
+dataset$CIP11BACHL <- as.factor(dataset$CIP11BACHL)
+dataset$CIP13BACHL <- as.factor(dataset$CIP13BACHL)
+dataset$CIP14BACHL <- as.factor(dataset$CIP14BACHL)
+dataset$CIP15BACHL <- as.factor(dataset$CIP15BACHL)
+dataset$CIP16BACHL <- as.factor(dataset$CIP16BACHL)
+dataset$CIP23BACHL <- as.factor(dataset$CIP23BACHL)
+dataset$CIP24BACHL <- as.factor(dataset$CIP24BACHL)
+dataset$CIP26BACHL <- as.factor(dataset$CIP26BACHL)
+dataset$CIP27BACHL <- as.factor(dataset$CIP27BACHL)
+dataset$CIP30BACHL <- as.factor(dataset$CIP30BACHL)
+dataset$CIP31BACHL <- as.factor(dataset$CIP31BACHL)
+dataset$CIP38BACHL <- as.factor(dataset$CIP38BACHL)
+dataset$CIP40BACHL <- as.factor(dataset$CIP40BACHL)
+dataset$CIP42BACHL <- as.factor(dataset$CIP42BACHL)
+dataset$CIP43BACHL <- as.factor(dataset$CIP43BACHL)
+dataset$CIP44BACHL <- as.factor(dataset$CIP44BACHL)
+dataset$CIP45BACHL <- as.factor(dataset$CIP45BACHL)
+dataset$CIP50BACHL <- as.factor(dataset$CIP50BACHL)
+dataset$CIP51BACHL <- as.factor(dataset$CIP51BACHL)
+dataset$CIP52BACHL <- as.factor(dataset$CIP52BACHL)
+dataset$CIP54BACHL <- as.factor(dataset$CIP54BACHL)
+dataset$CIP03BACHL <- as.factor(dataset$CIP03BACHL)
+dataset$CIP05BACHL <- as.factor(dataset$CIP05BACHL)
+dataset$CIP09BACHL <- as.factor(dataset$CIP09BACHL)
+
+
+
+
+```
+
+
+```{r}
+#Moce ROI to the first column
+dataset <- data.frame(ROI=dataset$ROI,  subset(dataset, select=-ROI))
+#Removes infinity
+dataset$ROI[!is.finite(dataset$ROI)] <- NA
+
+#removes all NA in ROI
+
+summary(dataset$ROI)
+max(dataset$ROI)
+
+which(dataset$ROI>= 36037)
+dataset <- dataset[-1372,]
+
+sortROI=sort(dataset$ROI)
+
+plot(sortROI,col = c("red"), pch = 21, bg="yellow",ylab="ROI")
+plot(log(sortROI),col = c("red"), pch = 21, bg="yellow",ylab="ROI")
+plot(sortROI,col = c("red"), pch = 21, bg="yellow",ylab="ROI",type = "h")
+plot(log(sortROI),col = c("red"), pch = 21, bg="yellow",ylab="ROI",type = "h")
+
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
+
+dataset=completeFun(dataset, "ROI")
+
+hist(dataset$ROI,col = c("red"),ylab="ROI")
+hist(log(dataset$ROI),col = c("red"),ylab="ROI")
+
+summary(dataset$ROI)
+
+
+```
+
+
+```{r}
+
+
+na_count3 <-sapply(dataset, function(y) sum(length(which(is.na(y)))))
+
+na_count3 <- data.frame(na_count3)
+
+#na_count3 <- na_count3[,]
+na_count3 <- na_count3[order(-na_count3),]
+
+#na_count3
+
+plot(na_count3)
+
+
+
+#Impute by mode/Mean
+
+Mode <- function (x, na.rm) {
+    xtab <- table(x)
+    xmode <- names(which(xtab == max(xtab)))
+    if (length(xmode) > 1) xmode <- ">1 mode"
+    return(xmode)
+}
+
+for (var in 1:ncol(dataset)) {
+    if (class(dataset[,var])=="numeric") {
+        dataset[is.na(dataset[,var]),var] <- mean(dataset[,var], na.rm = TRUE)
+    } else if (class(dataset[,var]) %in% c("character", "factor")) {
+        dataset[is.na(dataset[,var]),var] <- Mode(dataset[,var], na.rm = TRUE)
+    }
+}
+
+
+for(i in 1:ncol(dataset)){
+  dataset[is.na(dataset[,i]), i] <- mean(dataset[,i], na.rm = TRUE)
+
+}
+
+
+
+na_count3 <-sapply(dataset, function(y) sum(length(which(is.na(y)))))
+
+na_count3 <- data.frame(na_count3)
+
+#na_count3 <- na_count3[,]
+na_count3 <- na_count3[order(-na_count3),]
+
+#na_count3
+
+plot(na_count3)
+
+
+
+```
+########################################################
+
+THIS CHECK NUMS AND FACTS
+
+
+#identifying categorical (text) variables
+categ <- unlist(lapply(dataset, is.factor))
+
+factors <-dataset[ ,categ]
+summary(factors)
+
+#identifying continous variables
+nums <- unlist(lapply(dataset, is.numeric))
+
+numerics <-dataset[ ,nums]
+#summary(numerics)
+
+
+
+
+
+
+```{r}
+
+datanum=dataset
+#datasampcr=sample_n(dataset, 20)
+
+#remove variables that are not binary or numeric #####This includes ACT, ROI and SAT#####
+
+#dataset$TRANS_L4_POOLED_SUPP 651
+
+
+datanum=datanum[c(-2,-3,-4)]
+datanum$SEPAR_DT_MDN=NULL
+datanum$TRANS_L4_POOLED_SUPP=NULL
+
+
+
+#datasampcr=sample_n(datanum, 20)
+
+```
+
+
+```{r}
+
+datanum$ICLEVEL<- as.numeric(as.character(dataset$ICLEVEL))
+datanum$SCH_DEG<-as.numeric(as.character(dataset$SCH_DEG))
+datanum$PREDDEG<-as.numeric(as.character(dataset$PREDDEG))
+datanum$HIGHDEG<-as.numeric(as.character(dataset$HIGHDEG))
+datanum$CONTROL<-as.numeric(as.character(dataset$CONTROL))
+#Set levels to binary
+
+
+levels(datanum$CIP11BACHL)=c(0,1,1)
+levels(datanum$CIP13BACHL)=c(0,1,1)
+levels(datanum$CIP14BACHL)=c(0,1,1)
+levels(datanum$CIP15BACHL)=c(0,1,1)
+levels(datanum$CIP16BACHL)=c(0,1,1)
+levels(datanum$CIP23BACHL)=c(0,1,1)
+levels(datanum$CIP24BACHL)=c(0,1,1)
+levels(datanum$CIP26BACHL)=c(0,1,1)
+levels(datanum$CIP27BACHL)=c(0,1,1)
+levels(datanum$CIP30BACHL)=c(0,1,1)
+levels(datanum$CIP31BACHL)=c(0,1,1)
+levels(datanum$CIP38BACHL)=c(0,1,1)
+levels(datanum$CIP40BACHL)=c(0,1,1)
+levels(datanum$CIP42BACHL)=c(0,1,1)
+levels(datanum$CIP43BACHL)=c(0,1,1)
+levels(datanum$CIP44BACHL)=c(0,1,1)
+levels(datanum$CIP45BACHL)=c(0,1,1)
+levels(datanum$CIP50BACHL)=c(0,1,1)
+levels(datanum$CIP51BACHL)=c(0,1,1)
+levels(datanum$CIP52BACHL)=c(0,1,1)
+levels(datanum$CIP54BACHL)=c(0,1,1)
+levels(datanum$CIP03BACHL)=c(0,1,1)
+levels(datanum$CIP05BACHL)=c(0,1,1)
+levels(datanum$CIP09BACHL)=c(0,1,1)
+levels(datanum$OPENADMP)=c(0,1,1)
+
+
+
+
+#Makes binary factors into numeric
+datanum$MAIN<-as.numeric(as.character(datanum$MAIN))
+datanum$CIP11BACHL<-as.numeric(as.character(datanum$CIP11BACHL))
+datanum$CIP13BACHL<-as.numeric(as.character(datanum$CIP13BACHL))
+datanum$CIP14BACHL<-as.numeric(as.character(datanum$CIP14BACHL))
+datanum$CIP15BACHL<-as.numeric(as.character(datanum$CIP15BACHL))
+datanum$CIP16BACHL<-as.numeric(as.character(datanum$CIP16BACHL))
+datanum$CIP23BACHL<-as.numeric(as.character(datanum$CIP23BACHL))
+datanum$CIP24BACHL<-as.numeric(as.character(datanum$CIP24BACHL))
+datanum$CIP26BACHL<-as.numeric(as.character(datanum$CIP26BACHL))
+datanum$CIP27BACHL<-as.numeric(as.character(datanum$CIP27BACHL))
+datanum$CIP30BACHL<-as.numeric(as.character(datanum$CIP30BACHL))
+datanum$CIP31BACHL<-as.numeric(as.character(datanum$CIP31BACHL))
+datanum$CIP38BACHL<-as.numeric(as.character(datanum$CIP38BACHL))
+datanum$CIP40BACHL<-as.numeric(as.character(datanum$CIP40BACHL))
+datanum$CIP42BACHL<-as.numeric(as.character(datanum$CIP42BACHL))
+datanum$CIP43BACHL<-as.numeric(as.character(datanum$CIP43BACHL))
+datanum$CIP44BACHL<-as.numeric(as.character(datanum$CIP44BACHL))
+datanum$CIP45BACHL<-as.numeric(as.character(datanum$CIP45BACHL))
+datanum$CIP50BACHL<-as.numeric(as.character(datanum$CIP50BACHL))
+datanum$CIP51BACHL<-as.numeric(as.character(datanum$CIP51BACHL))
+datanum$CIP52BACHL<-as.numeric(as.character(datanum$CIP52BACHL))
+datanum$CIP54BACHL<-as.numeric(as.character(datanum$CIP54BACHL))
+datanum$CIP03BACHL<-as.numeric(as.character(datanum$CIP03BACHL))
+datanum$CIP05BACHL<-as.numeric(as.character(datanum$CIP05BACHL))
+datanum$CIP09BACHL<-as.numeric(as.character(datanum$CIP09BACHL))
+datanum$OPENADMP<-as.numeric(as.character(datanum$OPENADMP))
+
+
+
+
+#cols = c(1:25);    
+#f2[,cols] = apply(f2[,cols], 2, function(x) as.numeric(as.character(x)));
+
+#dataset2$UGNONDS <- as.numeric(as.character(dataset2$UGNONDS))
+```
+
+
+```{r}
+set.seed(1)
+ROI=log(dataset$ROI)
+
+split <- createDataPartition(ROI, p = 3/4, list= FALSE)
+head(ROI)
+data.Train <- dataset[ split,]
+data.Test <- dataset[-split,]
+ROI.Train <- ROI[split]
+ROI.Test <- ROI[-split]
+
+ctrl <- trainControl(method = "repeatedcv", repeats = 5)
+```
+
+```{r}
+formula <- ROI.Train ~ PCIP24+    TRANS_L4+    UGNONDS+    PPTUG_EF+  D_PCTPELL_PCTFLOAN+    ENRL_4YR_TRANS_YR4_RT+    UGDS+    LOAN_EVER+     COSTT4_A+        PCTFLOAN+    C200_L4+    COMP_ORIG_YR8_RT+    FIRSTGEN_COMP_ORIG_YR6_RT+    NOT1STGEN_COMP_ORIG_YR6_RT+    CIP11BACHL+    CIP13BACHL+    CIP14BACHL+    CIP15BACHL+    CIP16BACHL+    CIP23BACHL+    CIP24BACHL+    CIP26BACHL+    CIP27BACHL+    CIP30BACHL+    CIP31BACHL+    CIP38BACHL+    CIP40BACHL+    CIP42BACHL+    CIP43BACHL+    CIP44BACHL+    CIP45BACHL+    CIP50BACHL+    CIP51BACHL+    CIP52BACHL+    CIP54BACHL+    AVGFACSAL+        HIGHDEG+    UGDS_WOMEN+    DEBT_MDN+    DEP_INC_AVG+    IND_UNKN_ORIG_YR4_RT+    DEP_UNKN_ORIG_YR4_RT+    COUNT_WNE_P10+    COUNT_WNE_MALE0_P10+    COUNT_WNE_INC1_P10+    GT_25K_P10+    COUNT_WNE_INDEP1_P10+    COUNT_WNE_INC2_P10+    PCT25_EARN_WNE_P10
+
+```
+
+
+```{r}
+attach(dataset)
+d <- data.frame(PCIP24,    TRANS_L4 ,    UGNONDS, PPTUG_EF, D_PCTPELL_PCTFLOAN,   ENRL_4YR_TRANS_YR4_RT,    UGDS,   LOAN_EVER,    COSTT4_A,  C150_L4,  PCTFLOAN,  C200_L4,  TUITIONFEE_OUT,   COMP_ORIG_YR6_RT,   COMP_ORIG_YR8_RT,    FIRSTGEN_COMP_ORIG_YR6_RT, NOT1STGEN_COMP_ORIG_YR6_RT,   CIP11BACHL, CIP13BACHL,    CIP14BACHL,   CIP15BACHL,  CIP16BACHL,  CIP23BACHL,  CIP24BACHL,    CIP26BACHL,  CIP27BACHL, CIP30BACHL, CIP31BACHL, CIP38BACHL,    CIP40BACHL,  CIP42BACHL, CIP43BACHL,  CIP44BACHL,    CIP45BACHL,    CIP50BACHL,   CIP51BACHL, CIP52BACHL,    CIP54BACHL,    AVGFACSAL,    LO_INC_UNKN_ORIG_YR4_RT,      HIGHDEG,    UGDS_WOMEN,    DEBT_MDN,    DEP_INC_AVG,    IND_UNKN_ORIG_YR4_RT,    DEP_UNKN_ORIG_YR4_RT,    COUNT_WNE_P10,    COUNT_WNE_MALE0_P10,    dataset$COUNT_WNE_INC1_P10,   GT_25K_P10,    COUNT_WNE_INDEP1_P10,    COUNT_WNE_INC2_P10,   PCT25_EARN_WNE_P10)
+
+typeof(d$PCIP12)
+
+#identifying categorical (text) variables
+d_num <- unlist(lapply(d, is.numeric))
+
+
+
+d_numerics<- d[,d_num]
+
+
+M <- cor(d_numerics)
+#M
+
+
+
+png(height=2200, width=2200, file="corrplot.png")
+
+#col1 <-rainbow(100, s = 1, v = 1, start = 0, end = 0.9, alpha = 1)
+#test <- matrix(data=c(20:60),nrow=7,ncol=7)
+
+corrplot(M, tl.cex=2, title="Correlation of selected variables",
+  method="number",
+  addCoef.col = rgb(0,0,0, alpha = 0.6), number.digits = 1, number.cex = 3
+)
+
+dev.off()
+```
+
+```{r}
+#RUNME
+
+```
+
+
+
+###########################################################################################
+#########     There are two Datasets                                              #########
+#########     dataset = is clean, full ROI, no outliers, inf or anything ugly     ######### 
+#########     datanum is basically like above but all numeric                     #########
+#########                                                                         #########
+###########################################################################################
+
+
+
+
+###########################################################################################
+#########                        Model Here!!                                     #########
+#########                                                                         #########
+###########################################################################################
+
+
+
+****************Linear regression******************
+```{r}
+#model1 : Linear regression
+set.seed(15)
+lm.fit <- lm(formula, data= data.Train)
+summary(lm.fit)
+lmpred <- predict(lm.fit, data.Test)
+
+lmR2=cor(lmpred, ROI.Test,method= "pearson")^2
+lmR2#0.84
+
+lmRMSE=RMSE(lmpred, ROI.Test) # 308.1
+lmRMSE
+
+```
+
+
+
+***********************************MARS **********************
+```{r}
+library(earth)
+set.seed(15)
+# fit model
+fitm<- earth(formula, data.Train)
+# summarize the fit
+#summary(fitm)
+# summarize the importance of input variables
+evimp(fitm)
+# make predictions
+marspred <- predict(fitm, data.Test)
+
+#length(marspred)
+#length(ROI.Test)
+# summarize accuracy
+marsR2=cor(marspred, ROI.Test, method= "pearson")^2
+marsR2  #0.84
+
+marsRMSE=RMSE(marspred, ROI.Test) # 277
+marsRMSE
+```
+
+
+
+
+
+*************SVM regression******************************************SVM regression************
+
+
+
+```{r}
+library(kernlab)
+set.seed(1)
+rbfSVM <- ksvm(formula,
+             data = data.Train,
+              kernel ="rbfdot", kpar = "automatic",
+              C = 1, epsilon = 0.1)
+
+svm2pred <- predict(rbfSVM, newdata = data.Test)
+
+
+svm2R2=cor(svm2pred, ROI.Test,
+       method= "pearson")^2
+svm2R2#0.92
+
+svm2RMSE=RMSE (svm2pred, ROI.Test)#191.6
+svm2RMSE
+
+
+
+```
+
+
+
+********************KNN******************************
+
+
+
+```{r}
+
+library(caret)
+library(ggplot2)
+library(FNN)
+
+#######functions###########
+# error = function(actual, predicted) {
+#   mean(actual != predicted)
+# }
+
+set.seed(1)
+k_to_try = 1:100
+err_k = rep(x = 0, times = length(k_to_try))
+
+for(i in seq_along(k_to_try)) {
+  knnModel = knnreg(formula, data.Train, k= k_to_try[i])
+  knnpred = predict(knnModel, newdata = data.Test)              
+          
+  err_k[i] = RMSE(ROI.Test, knnpred)
+}
+
+#best k
+min(err_k)
+which(err_k == min(err_k))
+
+
+```
+
+
+
+
+```{r}
+# plot accuracy vs choice of k
+plot(err_k, type = "b", col = "dodgerblue", cex = 1, pch = 20, 
+     xlab = "k, number of neighbors", ylab = "Regression error",
+     main = "error vs Neighbors")
+# add lines indicating k with best accuracy
+abline(v = which(err_k == min(err_k)), col = "darkorange", lwd = 1.5)
+# add line for max accuracy seen
+abline(h = max(err_k), col = "grey", lty = 2)
+# add line for prevalence in test set
+#abline(h = mean(ROI.Test == "No"), col = "grey", lty = 2)
+```
+
+```{r}
+
+knnModel <- knnreg(formula, data.Train, k=4)
+                  
+knnModel
+summary(knnModel)
+knnPred <- predict(knnModel, newdata = data.Test)
+
+knnR2=cor(knnPred, ROI.Test,
+        method= "pearson")^2
+knnR2 #0.85
+
+knnRMSE=RMSE (knnPred, ROI.Test) #238
+knnRMSE
+```
+
+
+
+********************RLM******************************
+```{r}
+set.seed(15)
+rlmFit <- rlm(formula, data = data.Train)
+
+rlmPred <- predict(rlmFit, data.Test)
+rlmR2=cor(rlmPred, ROI.Test,
+       method= "pearson")^2
+
+rlmR2
+rlmRMSE=RMSE (rlmPred, ROI.Test)
+rlmRMSE
+
+```
+
+
+
+********************Random Forest******************************
+
+```{r}
+library(randomForest)
+set.seed(1)
+bestmtry <- tuneRF(formula, data.Train, ROI.Train, ntree=1, stepFactor = .5, improve = .1)
+print(bestmtry)
+
+set.seed(1)
+rf <- randomForest(formula, data = data.Train, mtry =34, ntree = 160)
+
+rfPred <- predict(rf, newdata = data.Test)
+rfR2=cor(rfPred, ROI.Test,
+      method= "pearson")^2
+rfR2
+
+rfRMSE= RMSE (rfPred, ROI.Test)
+rfRMSE
+plot(rf)
+
+
+library(party)
+
+x <- ctree(rf)
+plot(x, type="simple")
+
+
+```
+
+
+
+********************LASSO******************************
+
+
+alpha is for the elastic-net mixing parameter 
+??
+??
+, with range 
+?????[0,1]
+?????[0,1]
+. 
+??=1
+??=1
+is the lasso (default) and 
+??=0
+??=0
+is the ridge.
+
+
+
+
+```{r}
+# Fit models:
+
+library(Matrix)
+library(glmnet)
+library(foreach)
+set.seed(1)
+lambda <- 10^seq(10, -2, length = 100)
+
+X <- as.matrix(d_numerics[split,])
+Test <- as.matrix(d_numerics[-split,])
+
+
+fit.ridge <- glmnet(X, ROI.Train, family="gaussian", alpha=0)
+
+
+
+
+
+#tuning to find best lambda for ridge
+set.seed(1)
+ridge_cv.out <- cv.glmnet(X, ROI.Train, alpha=0, nlambda=100, lambda.min.ratio=0.0001)
+plot(ridge_cv.out)
+
+best.lambda <- ridge_cv.out$lambda.min
+best.lambda
+#best lambda used to predict 
+
+RidgePred <- predict(fit.ridge, s=best.lambda, newx=Test)
+mse_ridge <- mean((ROI.Test - RidgePred)^2)
+
+
+RidgeR2 <- cor(ROI.Test, RidgePred)^2
+RidgeR2
+RidgeRMSE= sqrt(mse_ridge)
+RidgeRMSE
+##########
+```
+
+```{r}
+#Lasso regression
+
+fit.lasso <- glmnet(X, ROI.Train, family="gaussian", alpha=1)
+
+
+
+#tuning to find best lambda for ridge
+set.seed(1)
+lasso_cv.out <- cv.glmnet(X, ROI.Train, alpha=1, nlambda=100, lambda.min.ratio=0.0001)
+plot(lasso_cv.out)
+
+best.lambda.l <- lasso_cv.out$lambda.min
+best.lambda.l
+#best lambda used to predict 
+
+LassoPred <- predict(fit.lasso, s=best.lambda.l, newx=Test)
+
+LassoR2 <- cor(ROI.Test, LassoPred)^2
+LassoR2
+
+mse_lasso <- mean((ROI.Test - LassoPred)^2)
+LassoRMSE=sqrt(mse_lasso)
+LassoRMSE
+
+##########
+```
+
+
+
+```{r}
+#elnet
+fit.elnet <- glmnet(X, ROI.Train, family="gaussian", alpha=.5)
+
+#tuning to find best lambda for ridge
+set.seed(1)
+elnet_cv.out <- cv.glmnet(X, ROI.Train, alpha=0.5, nlambda=100, lambda.min.ratio=0.0001)
+plot(elnet_cv.out)
+
+best.lambda.e <- elnet_cv.out$lambda.min
+best.lambda.e
+#best lambda used to predict 
+
+EnetPred <- predict(fit.elnet, s=best.lambda.e, newx=Test)
+mse_elnet <- mean((ROI.Test - EnetPred)^2)
+EnetR2 <- cor(ROI.Test, EnetPred)^2
+EnetR2
+
+EnetRMSE=sqrt(mse_elnet)
+EnetRMSE
+
+```
+
+
+
+
+```{r}
+
+
+ModelResults <- matrix(c(lmR2, marsR2,svm2R2,knnR2,rlmR2,rfR2,RidgeR2,LassoR2,EnetR2,lmRMSE,marsRMSE
+                      ,svm2RMSE,knnRMSE,rlmRMSE,rfRMSE,RidgeRMSE,LassoRMSE,EnetRMSE), byrow = TRUE, 2, 9) 
+rownames(ModelResults) <- c('R2', 'RMSE')
+colnames(ModelResults)<- c('LM', 'MARS','SVM','KNN','RLM','RF','Ridge','Lasso','Enet')
+ModelResults
+print("Best Model is RF")
+max(ModelResults[,1:9])
+min(ModelResults[,1:9])
+
+
+
+                       
+```
+
+
+
+
+```{r}
+
+ROIreal=log(data.Test$ROI)
+
+#percent_diff=round((difference/ROIreal)*100,2)
+#summary(difference)
+#add difference,percent_diff
+PredVsObs = data.frame(Observed=ROIreal,LM=lmpred,MARS=marspred,SVM=svm2pred,KNN=knnPred,RLM=rlmPred,RF=rfPred,Ridge=RidgePred,Lasso=LassoPred,Enet=EnetPred)
+colnames(PredVsObs)[3] <- "MARS"
+colnames(PredVsObs)[8] <- "Ridge"
+colnames(PredVsObs)[9] <- "Lasso"
+colnames(PredVsObs)[10] <- "Enet"
+round(exp(PredVsObs),digits=0)
+
+
+```
+
+
+```{r}
+lmResiduals=round(exp(ROIreal)-exp(lmpred),digits=2)
+marsResiduals=round(exp(ROIreal)-exp(marspred),digits=2)
+svmResiduals=round(exp(ROIreal)-exp(svm2pred),digits=2)
+knnResiduals=round(exp(ROIreal)-exp(knnPred),digits=2)
+rlmResiduals=round(exp(ROIreal)-exp(rlmPred),digits=2)
+rfResiduals=round(exp(ROIreal)-exp(rfPred),digits=2)
+
+ridgeResiduals=round(exp(ROIreal)-exp(RidgePred),digits=2)
+lassoResiduals=round(exp(ROIreal)-exp(LassoPred),digits=2)
+enetResiduals=round(exp(ROIreal)-exp(EnetPred),digits=2)
+
+
+Residuals = data.frame(LM=lmResiduals,MARS=marsResiduals,SVM=svmResiduals,KNN=knnResiduals,RLM=rlmResiduals,RF=rfResiduals,Ridge=ridgeResiduals,Lasso=lassoResiduals,Enet=enetResiduals)
+colnames(Residuals)[2] <- "MARS"
+colnames(Residuals)[7] <- "Ridge"
+colnames(Residuals)[8] <- "Lasso"
+colnames(Residuals)[9] <- "Enet"
+Residuals
+
+
+```
+
+
+
+```{r}
+plot(PredVsObs,col = c("red", "blue"), pch = c(15, 16) )
+
+
+
+plot(PredVsObs[,c(1,7)],col = c("red", "blue"), pch = c(15, 16), main= "Final Model")
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,6],col = c("red"), pch = 21, bg="black",main= "Residuals")
+abline(a=0,b=0, col="Black")
+
+
+
+```
+
+```{r}
+plot(PredVsObs[,c(1,2)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,1],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+
+
+plot(PredVsObs[,c(1,3)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,2],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+
+plot(PredVsObs[,c(1,4)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,3],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+
+plot(PredVsObs[,c(1,5)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,4],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+plot(PredVsObs[,c(1,6)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,5],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+plot(PredVsObs[,c(1,7)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,6],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+
+plot(PredVsObs[,c(1,8)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,7],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+plot(PredVsObs[,c(1,9)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,8],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+plot(PredVsObs[,c(1,10)],col = c("red", "blue"), pch = c(15, 16) )
+legend(1, 3500, legend=c("Observed", "RF"),
+       col=c("red", "blue"), lty=1:2, cex=1)
+abline(a=0,b=1, col="Black")
+
+
+
+plot(Residuals[,9],col = c("red"), pch = 21, bg="black")
+abline(a=0,b=0, col="Black")
+
+
+
+
+
+
+```
+
+
